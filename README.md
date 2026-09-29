@@ -19,14 +19,7 @@ database, message broker, or web framework.
   ports;
 - activity and lap read models, plus cursor-paginated track reads.
 
-## Requirements
-
-- PHP 8.5;
-- `youmad/endurance-foundation`.
-
 ## Installation
-
-Install the package with Composer:
 
 ```bash
 composer require youmad/endurance-activity
