@@ -101,6 +101,22 @@ final class ApplyActivityLifecycleEventTest extends TestCase
         );
     }
 
+    public function testInitialTimerStartIsPersistedSeparately(): void
+    {
+        $activity = Activity::start($this->instant('2026-01-15T10:30:00Z'));
+        $activities = $this->createMock(ActivityRepository::class);
+        $activities->expects(self::once())->method('get')->willReturn($activity);
+        $activities->expects(self::once())->method('save')->with($activity);
+        $transaction = $this->createStub(ActivityTransaction::class);
+        $transaction->method('run')->willReturnCallback(static fn (\Closure $operation): mixed => $operation());
+        (new ApplyActivityLifecycleEvent($activities, $transaction))->handle(
+            $activity->id,
+            new ActivityLifecycleItem(ActivityLifecycleAction::TimerStart, $this->instant('2026-01-15T10:30:03Z')),
+        );
+        self::assertTrue($activity->startedAt->equals($this->instant('2026-01-15T10:30:00Z')));
+        self::assertTrue($activity->timerStartedAt?->equals($this->instant('2026-01-15T10:30:03Z')));
+    }
+
     private function instant(string $value): Instant
     {
         return Instant::fromDateTimeImmutable(

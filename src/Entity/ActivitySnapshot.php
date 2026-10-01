@@ -32,6 +32,7 @@ final readonly class ActivitySnapshot
         public Duration $accumulatedPausedDuration,
         public Instant $latestTimestamp,
         public ?int $localTimeOffsetSeconds = null,
+        public ?Instant $timerStartedAt = null,
     ) {
     }
 
@@ -56,9 +57,11 @@ final readonly class ActivitySnapshot
         Duration $accumulatedPausedDuration,
         Instant $latestTimestamp,
         ?int $localTimeOffsetSeconds = null,
+        ?Instant $timerStartedAt = null,
     ): self {
         self::assertState(
             startedAt: $startedAt,
+            timerStartedAt: $timerStartedAt,
             finishedAt: $finishedAt,
             lastObservationAt: $lastObservationAt,
             lastLapFinishedAt: $lastLapFinishedAt,
@@ -80,6 +83,7 @@ final readonly class ActivitySnapshot
         return new self(
             id: $id,
             startedAt: $startedAt,
+            timerStartedAt: $timerStartedAt,
             finishedAt: $finishedAt,
             lastObservationAt: $lastObservationAt,
             lastLapFinishedAt: $lastLapFinishedAt,
@@ -119,6 +123,7 @@ final readonly class ActivitySnapshot
         ?Instant $pausedAt,
         Duration $accumulatedPausedDuration,
         Instant $latestTimestamp,
+        ?Instant $timerStartedAt,
     ): void {
         if (0 > $sessionCount) {
             throw new InvalidActivitySnapshot('Activity snapshot session count cannot be negative.');
@@ -138,6 +143,12 @@ final readonly class ActivitySnapshot
             throw new InvalidActivitySnapshot('Activity snapshot latest timestamp cannot precede its start.');
         }
 
+        self::assertTimelineInstant(
+            name: 'timer start',
+            value: $timerStartedAt,
+            startedAt: $startedAt,
+            latestTimestamp: $latestTimestamp,
+        );
         self::assertTimelineInstant(
             name: 'finish',
             value: $finishedAt,
@@ -220,7 +231,12 @@ final readonly class ActivitySnapshot
 
         if (
             $accumulatedPausedDuration->isLongerThan(
-                Duration::between($startedAt, $latestTimestamp),
+                Duration::between(
+                    null === $summaryReportedAt && null !== $timerStartedAt
+                        ? $timerStartedAt
+                        : $startedAt,
+                    $latestTimestamp,
+                ),
             )
         ) {
             throw new InvalidActivitySnapshot('Activity snapshot paused duration cannot exceed its timeline duration.');

@@ -54,6 +54,9 @@ final readonly class ApplyActivityLifecycleEvent
             ActivityLifecycleAction::Start => $activity->confirmStartedAt(
                 $event->occurredAt,
             ),
+            ActivityLifecycleAction::TimerStart => $activity->confirmTimerStartedAt(
+                $event->occurredAt,
+            ),
             ActivityLifecycleAction::Pause => $activity->pause(
                 $event->occurredAt,
             ),

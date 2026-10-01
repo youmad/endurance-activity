@@ -8,6 +8,7 @@ use Youmad\Endurance\Activity\Detail\ActivityDetail;
 use Youmad\Endurance\Activity\Detail\SequentialActivityDetail;
 use Youmad\Endurance\Activity\Exception\CannotApplyActivitySummary;
 use Youmad\Endurance\Activity\Exception\CannotConfirmActivityStart;
+use Youmad\Endurance\Activity\Exception\CannotConfirmTimerStart;
 use Youmad\Endurance\Activity\Exception\CannotFinishActivity;
 use Youmad\Endurance\Activity\Exception\CannotPauseActivity;
 use Youmad\Endurance\Activity\Exception\CannotRecordActivityDetail;
@@ -26,6 +27,8 @@ use Youmad\Endurance\Foundation\ValueObject\TemporalResolution;
 
 final class Activity
 {
+    public private(set) ?Instant $timerStartedAt = null;
+
     public private(set) ?Instant $finishedAt = null;
 
     public private(set) ?Instant $lastObservationAt = null;
@@ -92,6 +95,7 @@ final class Activity
             id: $snapshot->id,
             startedAt: $snapshot->startedAt,
         );
+        $activity->timerStartedAt = $snapshot->timerStartedAt;
         $activity->finishedAt = $snapshot->finishedAt;
         $activity->lastObservationAt = $snapshot->lastObservationAt;
         $activity->lastLapFinishedAt = $snapshot->lastLapFinishedAt;
@@ -123,6 +127,7 @@ final class Activity
         return ActivitySnapshot::create(
             id: $this->id,
             startedAt: $this->startedAt,
+            timerStartedAt: $this->timerStartedAt,
             finishedAt: $this->finishedAt,
             lastObservationAt: $this->lastObservationAt,
             lastLapFinishedAt: $this->lastLapFinishedAt,
@@ -148,6 +153,33 @@ final class Activity
         }
     }
 
+    /** Records the initial timer start without changing the activity interval. */
+    public function confirmTimerStartedAt(Instant $startedAt): void
+    {
+        if (null !== $this->timerStartedAt) {
+            if ($this->timerStartedAt->equals($startedAt)) {
+                return;
+            }
+
+            throw new CannotConfirmTimerStart('A different initial timer start has already been recorded.');
+        }
+
+        if (
+            null !== $this->finishedAt
+            || null !== $this->pausedAt
+            || 0 !== $this->accumulatedPausedDuration->toMicroseconds()
+        ) {
+            throw new CannotConfirmTimerStart('Initial timer start requires an unfinished, unpaused activity.');
+        }
+
+        if ($startedAt->isBefore($this->latestTimestamp)) {
+            throw new CannotConfirmTimerStart('Initial timer start cannot precede the latest activity event.');
+        }
+
+        $this->timerStartedAt = $startedAt;
+        $this->latestTimestamp = $startedAt;
+    }
+
     public function isPaused(): bool
     {
         return null !== $this->pausedAt;
@@ -157,11 +189,20 @@ final class Activity
     {
         $elapsedDuration = $this->elapsedDuration();
 
-        if (null === $elapsedDuration) {
+        if (null === $elapsedDuration || null === $this->finishedAt) {
             return null;
         }
 
-        return $elapsedDuration->minus(
+        if (null !== $this->summaryReportedAt) {
+            return $this->recordedSessionTimerDuration;
+        }
+
+        // The interval before the first recorded timer start is not a pause.
+        $timerElapsedDuration = null === $this->timerStartedAt
+            ? $elapsedDuration
+            : Duration::between($this->timerStartedAt, $this->finishedAt);
+
+        return $timerElapsedDuration->minus(
             $this->accumulatedPausedDuration,
         );
     }
