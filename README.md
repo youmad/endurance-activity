@@ -1,47 +1,23 @@
-# youmad/endurance-activity
+# Endurance Activity
 
-A framework-agnostic domain model and application layer for endurance
-activities.
-
-The package represents activity lifecycle, telemetry, laps, sessions, devices,
-summaries, and import coordination without depending on a file format,
-database, message broker, or web framework.
-
-## Features
-
-- activity start, pause, resume, and finish invariants;
-- observations and scalar, text, position, range, vector, and array
-  measurements;
-- laps, sessions, pool lengths, segment efforts, and activity summaries;
-- device metadata and device-status observations;
-- idempotent streaming imports with generation-based activation;
-- persistence-neutral write, transaction, diagnostics, recovery, and read
-  ports;
-- activity and lap read models, plus cursor-paginated track reads.
+Domain model and application services for endurance activities: lifecycle,
+measurements, laps, sessions, devices and summaries.
 
 ## Installation
+
+Requires PHP `^8.5`.
 
 ```bash
 composer require youmad/endurance-activity
 ```
 
-## Usage
-
-The aggregate enforces chronological lifecycle transitions and exposes a
-snapshot for persistence adapters:
+## Activity lifecycle
 
 ```php
-<?php
-
-declare(strict_types=1);
-
-use DateTimeImmutable;
 use Youmad\Endurance\Activity\Entity\Activity;
 use Youmad\Endurance\Foundation\ValueObject\Instant;
 
-require __DIR__.'/vendor/autoload.php';
-
-$instant = static fn(string $value): Instant =>
+$instant = static fn (string $value): Instant =>
     Instant::fromDateTimeImmutable(new DateTimeImmutable($value));
 
 $activity = Activity::start($instant('2026-09-10T10:00:00Z'));
@@ -53,98 +29,49 @@ $snapshot = $activity->snapshot();
 $timerDuration = $activity->timerDuration();
 ```
 
-Domain violations are reported through specific exceptions rather than
-silently changing timestamps or measurements.
+Lifecycle and summary inconsistencies raise domain exceptions. The model retains
+reported measurements and distinguishes active timer duration from elapsed time.
+Pool lengths and segment efforts are represented as activity details.
 
-## Import model
+## Streaming imports
 
-Format-specific integrations produce `ActivityImportItem` streams. The
-`ImportActivityStream` use case stages those items under an import generation
-and makes them visible only after successful activation. Implementations of the
-ports under `Application\Port` provide persistence, transaction, batching,
-diagnostics, and recovery behavior.
+`Application\UseCase\ImportActivityStream` consumes `ActivityImportItem` streams.
+An import is staged under a generation and becomes visible after successful
+activation. The application implements the persistence, transaction and recovery
+interfaces in `Application\Port` and configures the item handlers.
 
-FIT mapping is intentionally kept in the separate
-`youmad/endurance-activity-fit` package. PostgreSQL implementations of the
-persistence ports are provided by `youmad/endurance-activity-postgresql`.
+Ready-made integrations are available in
+[`youmad/endurance-activity-fit`](https://github.com/youmad/endurance-activity-fit)
+and
+[`youmad/endurance-activity-postgresql`](https://github.com/youmad/endurance-activity-postgresql).
 
-## Track readings
+## Measurements and timelines
 
-`ActivityTrackPointReadModel::measurements()` preserves the ordered list of
-scalar readings, including repeated types. Each `ActivityScalarMeasurement`
-contains its value, unit, optional origin and source attribution/device ID.
-An absent origin is represented by `null`, not an assumed reported value.
+Observations support scalar, text, position, range, vector and array readings.
+Track read models retain repeated scalar types in their original order, with
+unit, origin and source attribution. `UnambiguousScalarMeasurements::byType()`
+returns only types with exactly one reading. Lap and Session summaries require
+unique measurement types.
 
-Consumers requiring one value per type can use
-`UnambiguousScalarMeasurements::byType()`. A type is included only when it has
-exactly one reading. Equal values, identical sources and different units do
-not resolve ambiguity. The PostgreSQL track adapter uses this policy for
-convenience fields such as `heartRate` and `altitude`.
+Source-specific metadata implements `Telemetry\MeasurementMetadata` with a stable
+namespaced type, positive schema version and JSON-compatible data.
 
-Lap and Session summaries retain their existing unique-type invariant.
-This track contract covers scalar readings; it does not broaden support for
-multiple positions or expose source-specific metadata.
-
-## Source-specific measurement metadata
-
-`MeasurementMetadata` defines an explicit representation through
-`metadataType()`, `metadataVersion()`, and `metadataData()`. Implementations own
-stable namespaced type identifiers, positive schema versions, and named data
-fields. These names must not be derived from PHP class or property names.
-Nested data may contain arrays, strings, integers, finite floats, booleans, and
-null; source-specific objects and enums must be converted explicitly.
-
-Changing a class name or property visibility must not change this representation.
-Incompatible changes to the data contract require a new version. The contract
-does not depend on a database or on FIT.
-
-## Summary adjacency policies
-
-`SummaryAdjacencyPolicy` expresses two sequence rules independently of timestamp
-precision. `NonOverlapping` rejects every overlap and permits positive gaps.
-`AbutWithinTwoWholeSeconds` compares whole-second boundary views and permits a
-difference of at most two seconds in either direction. It does not round the
-gap duration or change either stored instant.
-
-`Lap::create()` and `ActivitySession::create()` accept an optional
-`adjacencyPolicy` independently of `timelineResolution`. Activity aggregates and
-read models apply the incoming summary's policy to its boundary with the previous
-summary. Mixed-policy sequences therefore use the policy on the later summary.
-
-Omitted/null policy arguments select whole-second abutment for second precision
-and non-overlap for microsecond precision. Integrations should select a policy
-explicitly. The fallback is defined in `SummaryAdjacency::legacyPolicy()`.
-
-Policy identifiers are `non_overlapping` and `abut_within_two_whole_seconds`.
-FIT projection explicitly chooses the latter. Temporal resolution still controls
-precision-related boundary rules elsewhere in Activity.
+`Lap::create()` and `ActivitySession::create()` accept a `SummaryAdjacencyPolicy`
+separately from timeline precision. `NonOverlapping` permits gaps and rejects
+all overlaps. `AbutWithinTwoWholeSeconds` permits at most two seconds between
+whole-second boundary views, without changing stored timestamps. The later
+summary selects the policy for each adjacent pair. If omitted, second precision
+selects abutment and microsecond precision selects non-overlap.
 
 ## Development
+
+From a source checkout:
 
 ```bash
 composer install
 composer check
 ```
 
-`composer check` validates the package metadata, runs PHPUnit and PHPStan
-(level 6), and checks the code style with PHP CS Fixer (`@Symfony`).
-
-Run individual checks or apply code-style fixes with:
-
-```bash
-composer test
-composer analyse
-composer cs:check
-composer cs:fix
-```
-
 ## License
 
-The project-authored source code, tests, and documentation in this package
-are licensed under the Mozilla Public License 2.0 (`MPL-2.0`).
-
-> This Source Code Form is subject to the terms of the Mozilla Public
-> License, v. 2.0. If a copy of the MPL was not distributed with this
-> file, You can obtain one at https://mozilla.org/MPL/2.0/.
-
-See [LICENSE](LICENSE). Dependencies retain their own licenses.
+[MPL-2.0](LICENSE).
