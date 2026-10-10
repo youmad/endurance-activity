@@ -292,7 +292,6 @@ final readonly class ActivitySnapshot
         if (
             null !== $summaryReportedAt
             && null !== $finishedAt
-            && null !== $lastSessionTimelineFinishedAt
             && $lastSessionTimelineFinishedAt->isAfter($finishedAt)
         ) {
             throw new InvalidActivitySnapshot('A summarized activity snapshot must contain its normalized session timeline.');
