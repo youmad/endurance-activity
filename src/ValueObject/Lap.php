@@ -40,8 +40,8 @@ final readonly class Lap
         );
 
         // Lap timer and elapsed duration are independent source values.
-        // In particular, Garmin FIT validation does not require timer <= elapsed
-        // for a Lap. Preserve both values without changing its time boundaries.
+        // Preserve both values without requiring timer <= elapsed or changing
+        // the recorded time boundaries.
 
         $knownMeasurementTypes = [];
 

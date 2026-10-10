@@ -444,10 +444,9 @@ final class Activity
             TemporalResolution::Second === $timelineResolution
             && null !== $this->lastLapFinishedAt
         ) {
-            // Garmin compares start_time + whole-second total_elapsed_time
-            // for Lap/Session containment and rejects only a delta > 1.
-            // FIT starts are whole seconds: flooring the calculated ends
-            // gives the same comparison while preserving precise durations.
+            // At second precision, compare whole-second boundary views and allow
+            // a Lap end at most one second beyond the Session end without
+            // changing either recorded instant or duration.
             $lapEndSeconds = (int) $this->lastLapFinishedAt
                 ->toDateTimeImmutable()->format('U');
             $sessionEndSeconds = (int) $lastSessionFinishedAt
@@ -463,9 +462,9 @@ final class Activity
             TemporalResolution::Second === $timelineResolution
             && null !== $this->lastObservationAt
         ) {
-            // FIT Record/Session containment also includes a one-second
-            // excess over the calculated Session end. Keep source instants
-            // intact; only the enclosing Activity finish may be extended.
+            // At second precision, allow observations at most one whole second
+            // beyond the Session end. Keep source instants intact; only
+            // the enclosing Activity finish may be extended.
             $observationSeconds = (int) $this->lastObservationAt
                 ->toDateTimeImmutable()->format('U');
             $sessionEndSeconds = (int) $lastSessionFinishedAt
